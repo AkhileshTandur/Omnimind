@@ -1,0 +1,16 @@
+torch
+transformers>=4.44.0
+sentence-transformers
+faiss-cpu
+spacy>=3.7.0
+networkx
+opencv-python
+pydub
+nltk
+scikit-learn
+jsonschema
+pydantic>=2
+pyyaml
+tqdm
+fastapi
+uvicorn

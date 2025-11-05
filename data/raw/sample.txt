@@ -1,0 +1,1 @@
+OmniMind is a multimodal RAG agent with a vector store and a knowledge graph.

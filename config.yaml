@@ -1,0 +1,21 @@
+paths:
+  data_raw: "./data/raw"
+  data_processed: "./data/processed"
+  vector_index: "./data/processed/faiss.index"
+  docstore: "./data/processed/docstore.jsonl"
+  kg_graph: "./data/processed/kg.gpickle"
+
+models:
+  embed_text: "sentence-transformers/all-MiniLM-L6-v2"
+  cross_encoder: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  clip_vision: "openai/clip-vit-base-patch32"
+
+retrieval:
+  top_k: 12
+  rerank_k: 6
+  chunk_size: 800
+  chunk_overlap: 120
+
+agent:
+  self_critique: true
+  max_iters: 6

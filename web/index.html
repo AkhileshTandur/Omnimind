@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, minimal-ui"
+  />
+  <title>OmniMind Chat</title>
+
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 + Babel (for JSX in-browser) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    :root { color-scheme: light dark; }
+    /* Simple scrollbar */
+    .nice-scrollbar::-webkit-scrollbar { width: 10px; }
+    .nice-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.4);
+      border-radius: 6px;
+    }
+    .prose pre, .prose code { white-space: pre-wrap; word-wrap: break-word; }
+  </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+    function load(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } }
+
+    function ChatBubble({ role, text }) {
+      const isUser = role === "user";
+      return (
+        <div className={"w-full flex " + (isUser ? "justify-end" : "justify-start")}>
+          <div className={(isUser ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100") + " max-w-[80%] rounded-2xl px-4 py-3 shadow-sm border border-slate-200/60 dark:border-slate-700/50"}>
+            {!isUser && <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">OmniMind</div>}
+            <div className="whitespace-pre-wrap leading-relaxed">{text}</div>
+          </div>
+        </div>
+      );
+    }
+
+    function Toolbar({ endpoint, setEndpoint, onIngest, busy }) {
+      return (
+        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
+          <label className="flex-1">
+            <span className="text-xs text-slate-500 dark:text-slate-400">API base URL</span>
+            <input value={endpoint} onChange={e=>setEndpoint(e.target.value)}
+              className="w-full mt-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 outline-none focus:ring-2 ring-indigo-500"
+              placeholder="http://127.0.0.1:8000" />
+          </label>
+          <button onClick={onIngest} disabled={busy}
+            className={"rounded-xl px-4 py-2 font-medium " + (busy ? "bg-slate-300 dark:bg-slate-700 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700 text-white")}>
+            {busy ? "Ingesting..." : "Ingest data"}
+          </button>
+        </div>
+      );
+    }
+
+    function App() {
+      const [endpoint, setEndpoint] = useState(load("endpoint", "http://127.0.0.1:8000"));
+      const [input, setInput] = useState("");
+      const [messages, setMessages] = useState([
+        { role: "assistant", text: "Hi! I’m OmniMind. Ask me about your documents." }
+      ]);
+      const [loading, setLoading] = useState(false);
+      const [ingesting, setIngesting] = useState(false);
+      const listRef = useRef(null);
+      const abortRef = useRef(null);
+
+      useEffect(() => { save("endpoint", endpoint); }, [endpoint]);
+      useEffect(() => {
+        // autoscroll on new messages
+        listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+      }, [messages]);
+
+      async function callAgent(query) {
+        setLoading(true);
+        try {
+          const controller = new AbortController();
+          abortRef.current = controller;
+          const res = await fetch(endpoint + "/agent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query }),
+            signal: controller.signal
+          });
+          if (!res.ok) throw new Error("Request failed: " + res.status + " " + res.statusText);
+          const data = await res.json();
+          const answer = data?.answer ?? "(no answer)";
+          return answer;
+        } finally {
+          setLoading(false);
+          abortRef.current = null;
+        }
+      }
+
+      async function onSend() {
+        const q = input.trim();
+        if (!q) return;
+        setInput("");
+        setMessages(m => [...m, { role: "user", text: q }]);
+        try {
+          const a = await callAgent(q);
+          setMessages(m => [...m, { role: "assistant", text: a }]);
+        } catch (err) {
+          setMessages(m => [...m, { role: "assistant", text: "⚠️ " + (err?.message || String(err)) }]);
+        }
+      }
+
+      function onKey(e) {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) onSend();
+      }
+
+      function onAbort() {
+        try { abortRef.current?.abort(); } catch {}
+      }
+
+      async function onIngest() {
+        setIngesting(true);
+        try {
+          const res = await fetch(endpoint + "/ingest", { method: "POST" });
+          const data = await res.json().catch(()=>({}));
+          const added = data?.chunks_added ?? "unknown";
+          setMessages(m => [...m, { role: "assistant", text: `📥 Ingested: ${added} chunks.` }]);
+        } catch (e) {
+          setMessages(m => [...m, { role: "assistant", text: "⚠️ Ingest failed: " + (e?.message || String(e)) }]);
+        } finally {
+          setIngesting(false);
+        }
+      }
+
+      function clearChat() {
+        setMessages([{ role: "assistant", text: "Chat cleared. Ask me anything about your docs." }]);
+      }
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          {/* Header */}
+          <header className="border-b border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 backdrop-blur sticky top-0 z-10">
+            <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-bold">OM</div>
+                <div>
+                  <div className="font-semibold">OmniMind Chat</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">RAG + Tools + Self-critique</div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={clearChat} className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Clear</button>
+                {loading ? (
+                  <button onClick={onAbort} className="rounded-xl bg-rose-600 text-white px-3 py-1.5 text-sm hover:bg-rose-700">Abort</button>
+                ) : null}
+              </div>
+            </div>
+          </header>
+
+          {/* Content */}
+          <main className="flex-1">
+            <div className="max-w-5xl mx-auto px-4 py-4 space-y-4">
+              <Toolbar endpoint={endpoint} setEndpoint={setEndpoint} onIngest={onIngest} busy={ingesting} />
+
+              <div ref={listRef} className="mt-2 h-[60vh] overflow-y-auto nice-scrollbar bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+                {messages.map((m, i) => (
+                  <ChatBubble key={i} role={m.role} text={m.text} />
+                ))}
+              </div>
+
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={input}
+                  onChange={e=>setInput(e.target.value)}
+                  onKeyDown={onKey}
+                  rows={3}
+                  className="flex-1 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 outline-none focus:ring-2 ring-indigo-500"
+                  placeholder="Ask about your documents... (Ctrl/Cmd+Enter to send)"
+                />
+                <button onClick={onSend} disabled={loading}
+                  className={"h-10 px-5 rounded-2xl font-medium " + (loading ? "bg-slate-300 dark:bg-slate-700 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white")}>
+                  {loading ? "Thinking..." : "Send"}
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Tip: Click <span className="font-medium">Ingest data</span> after adding files in <code>data/raw</code>.
+              </p>
+            </div>
+          </main>
+
+          {/* Footer */}
+          <footer className="py-6 text-center text-xs text-slate-500 dark:text-slate-400">
+            OmniMind • Local demo UI • {new Date().getFullYear()}
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
