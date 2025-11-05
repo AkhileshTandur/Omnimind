@@ -198,12 +198,7 @@ OmniMind was created to help you understand how AI systems actually work under t
 It’s a full end-to-end architecture: ingestion → memory → reasoning → tools → reflection → interface.
 Use it as your personal research assistant, or a foundation to build your own custom copilots.
 
-
----
-
 ## 📘 To publish
-1. Make sure your repo looks like:
-
 
 omnimind/
 ├─ omnimind/
@@ -222,3 +217,4 @@ git commit -m "Initial commit: OmniMind RAG agent"
 git branch -M main
 git remote add origin https://github.com/<yourusername>/OmniMind.git
 git push -u origin main
+
